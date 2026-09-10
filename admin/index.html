@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NAVRIXA Admin</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    body { margin: 0; background: #090b10; color: #f5f7fb; }
+    main { max-width: 1100px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 4rem); }
+    .muted { color: #9aa4b2; }
+    .card { background: #11151d; border: 1px solid #222a36; border-radius: 18px; padding: 22px; margin-top: 22px; }
+    form { display: grid; gap: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    label { display: grid; gap: 7px; font-size: 0.9rem; color: #c8d0dc; }
+    input, textarea, select { width: 100%; box-sizing: border-box; border: 1px solid #303947; background: #0b0f15; color: white; border-radius: 12px; padding: 12px 14px; font: inherit; }
+    textarea { min-height: 120px; resize: vertical; }
+    button { border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer; font-weight: 700; }
+    .primary { background: white; color: #0a0d12; }
+    .secondary { background: #202734; color: white; }
+    .danger { background: #421d22; color: #ffd9dd; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .project { display: grid; grid-template-columns: 1fr auto; gap: 18px; padding: 18px 0; border-top: 1px solid #242b37; }
+    .project:first-child { border-top: 0; }
+    .hidden { display: none !important; }
+    #status { min-height: 24px; margin-top: 10px; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } .project { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <div class="muted">NAVRIXA</div>
+      <h1>Portfolio Admin</h1>
+      <div class="muted">Manage projects without editing code.</div>
+    </div>
+    <button id="logoutBtn" class="secondary hidden">Log out</button>
+  </div>
+
+  <section id="loginCard" class="card">
+    <h2>Admin Login</h2>
+    <form id="loginForm">
+      <label>Password<input id="password" type="password" autocomplete="current-password" required /></label>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+  </section>
+
+  <section id="dashboard" class="hidden">
+    <div class="card">
+      <h2 id="formTitle">Add Project</h2>
+      <form id="projectForm">
+        <input id="projectId" type="hidden" />
+        <div class="grid">
+          <label>Title<input id="title" required /></label>
+          <label>Category<input id="category" placeholder="Documentary, Tourism, Corporate..." /></label>
+          <label>Client<input id="client" /></label>
+          <label>Year<input id="year" type="number" min="1900" max="2200" /></label>
+          <label>YouTube URL<input id="youtube_url" type="url" /></label>
+          <label>Image URL<input id="image_url" type="url" /></label>
+        </div>
+        <label>Description<textarea id="description"></textarea></label>
+        <label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="featured" type="checkbox" style="width:auto" /> Featured project</label>
+        <div class="row">
+          <button class="primary" type="submit">Save Project</button>
+          <button id="cancelEdit" class="secondary hidden" type="button">Cancel Edit</button>
+        </div>
+      </form>
+      <div id="status" class="muted"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2>Projects</h2>
+        <button id="refreshBtn" class="secondary">Refresh</button>
+      </div>
+      <div id="projects"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let projects = [];
+
+function setStatus(message, isError = false) {
+  $("status").textContent = message;
+  $("status").style.color = isError ? "#ff9ca6" : "#9aa4b2";
+}
+
+function showDashboard() {
+  $("loginCard").classList.add("hidden");
+  $("dashboard").classList.remove("hidden");
+  $("logoutBtn").classList.remove("hidden");
+}
+
+function showLogin() {
+  $("loginCard").classList.remove("hidden");
+  $("dashboard").classList.add("hidden");
+  $("logoutBtn").classList.add("hidden");
+}
+
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(data.error || "Request failed"), { status: response.status });
+  return data;
+}
+
+async function loadProjects() {
+  try {
+    const data = await api("/api/admin/projects");
+    projects = data.projects || [];
+    showDashboard();
+    renderProjects();
+  } catch (error) {
+    if (error.status === 401) showLogin();
+    else setStatus(error.message, true);
+  }
+}
+
+function renderProjects() {
+  const root = $("projects");
+  root.innerHTML = "";
+  if (!projects.length) {
+    root.innerHTML = '<p class="muted">No database projects yet.</p>';
+    return;
+  }
+
+  for (const project of projects) {
+    const item = document.createElement("div");
+    item.className = "project";
+    const meta = [project.category, project.client, project.year, project.featured ? "Featured" : ""].filter(Boolean).join(" · ");
+    item.innerHTML = `
+      <div><strong>${escapeHtml(project.title)}</strong><div class="muted">${escapeHtml(meta)}</div></div>
+      <div class="row">
+        <button class="secondary" data-edit="${project.id}">Edit</button>
+        <button class="danger" data-delete="${project.id}">Delete</button>
+      </div>`;
+    root.appendChild(item);
+  }
+}
+
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
+}
+
+function resetForm() {
+  $("projectForm").reset();
+  $("projectId").value = "";
+  $("formTitle").textContent = "Add Project";
+  $("cancelEdit").classList.add("hidden");
+}
+
+function editProject(id) {
+  const project = projects.find((item) => Number(item.id) === Number(id));
+  if (!project) return;
+  for (const field of ["title", "category", "client", "year", "youtube_url", "image_url", "description"]) {
+    $(field).value = project[field] ?? "";
+  }
+  $("featured").checked = Boolean(project.featured);
+  $("projectId").value = project.id;
+  $("formTitle").textContent = "Edit Project";
+  $("cancelEdit").classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+$("loginForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password: $("password").value }) });
+    $("password").value = "";
+    await loadProjects();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+$("projectForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const id = $("projectId").value;
+  const payload = {
+    id: id ? Number(id) : undefined,
+    title: $("title").value,
+    category: $("category").value,
+    client: $("client").value,
+    year: $("year").value,
+    youtube_url: $("youtube_url").value,
+    image_url: $("image_url").value,
+    description: $("description").value,
+    featured: $("featured").checked,
+  };
+  try {
+    setStatus("Saving…");
+    await api("/api/admin/projects", { method: id ? "PUT" : "POST", body: JSON.stringify(payload) });
+    resetForm();
+    setStatus("Project saved.");
+    await loadProjects();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+});
+
+$("projects").addEventListener("click", async (event) => {
+  const editId = event.target.dataset.edit;
+  const deleteId = event.target.dataset.delete;
+  if (editId) editProject(editId);
+  if (deleteId && confirm("Delete this project?")) {
+    try {
+      await api(`/api/admin/projects?id=${encodeURIComponent(deleteId)}`, { method: "DELETE" });
+      setStatus("Project deleted.");
+      await loadProjects();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+});
+
+$("cancelEdit").addEventListener("click", resetForm);
+$("refreshBtn").addEventListener("click", loadProjects);
+$("logoutBtn").addEventListener("click", async () => {
+  await api("/api/admin/logout", { method: "POST" });
+  showLogin();
+});
+
+loadProjects();
+</script>
+</body>
+</html>
