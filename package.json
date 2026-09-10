@@ -1,0 +1,16 @@
+{
+  "name": "abdullahammad-portfolio-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/database": "latest"
+  },
+  "devDependencies": {
+    "@netlify/functions": "latest",
+    "netlify-cli": "latest",
+    "typescript": "latest"
+  }
+}
